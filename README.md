@@ -1,9 +1,9 @@
-BUCKY: Helpers for literature management with GitHub issues
+BUCKY: Helpers for literature management as GitHub actions
 ======
 
 ## Example
 
-<p align="center"><b>Based on the title in the issue, buckey will obtain information on the paper that author, title, publisher etc..</b></p>
+<p align="center"><b>Based on the title in the issue, buckey will obtain information on the paper that author, title, publisher etc.</b></p>
 
 <p align="center"><img width="620" src="inst/demo.gif?raw=true"></p>
 
