@@ -58,14 +58,16 @@ identific_altmetrics <-
     df_res_altm <-
       rAltmetric::altmetric_data(res_altm)
     
-    df_res_altm <-
-      df_res_altm[, c(
+    vars_altm <- 
+      names(df_res_altm)[names(df_res_altm) %in% c(
         "cited_by_posts_count",
         "cited_by_tweeters_count",
         "cited_by_accounts_count",
         "score",
-        "last_updated"
-      )]
+        "last_updated")]
+    
+    df_res_altm <-
+      df_res_altm[, vars_altm]
     
     df_res_altm$last_updated <-
       as.POSIXct(as.numeric(df_res_altm$last_updated),
