@@ -1,8 +1,11 @@
 library(rlang)
-library(purrr)
+library(purrr, warn.conflicts = FALSE)
 library(glue)
 library(rAltmetric)
 # library(ghql)
+
+reference_style <- "oikos"
+path_references_bib <- "references.bib"
 
 qry <- ghql::Query$new()
 cli <- ghql::GraphqlClient$new(
@@ -92,6 +95,7 @@ path_issue_template <- ".github/ISSUE_TEMPLATE/paper_template.md"
 
 queries <- list(issue_template = list("data", "repository", "object"),
                 issue_count = list("data", "repository", "issues", "totalCount"),
+                exist_bibfile = list("data", "repository", "object"),
                 collect_article_issue = list("data", "repository", "issues", "edges", "node"))
 qry$query("issue_template",
           glue('
@@ -265,7 +269,9 @@ if (paper_type %in% c("arxiv", "DOI")) {
   } else if (paper_type == "DOI") {
     
     target_article <-
-      rcrossref::cr_cn(dois = paper_identifer, style = "oikos", format = "bibentry")
+      rcrossref::cr_cn(dois = paper_identifer, 
+                       format = "bibtex", 
+                       style = reference_style)
     
     if (is.null(target_article)) {
       gh::gh("POST /repos/:owner/:repo/issues/:number/comments",
@@ -276,12 +282,15 @@ if (paper_type %in% c("arxiv", "DOI")) {
       
     } else {
       
-      authors <- ifelse(is.null(target_article$author), "", target_article$author)
-      title <- round_journal_name(target_article$title)
-      url <- target_article$url
+      target_article_parsed <- 
+        rcrossref:::parse_bibtex(target_article)
+      
+      authors <- ifelse(is.null(target_article_parsed$author), "", target_article_parsed$author)
+      title <- round_journal_name(target_article_parsed$title)
+      url <- target_article_parsed$url
       
       issue_title <- glue("{key}: {title}",
-                          key = target_article$key)
+                          key = target_article_parsed$key)
       
       duplicate_num <- 
         check_duplicate(issue_title, df_issues, event_json, close = FALSE, user, repo)
@@ -317,9 +326,9 @@ if (paper_type %in% c("arxiv", "DOI")) {
     } else if (paper_type == "DOI") {
       
       issue_labels <-
-        list(paste("Journal:", round_journal_name(target_article$journal)),
-             paste("Published year:", target_article$year),
-             paste("Type:", target_article$entry))
+        list(paste("Journal:", round_journal_name(target_article_parsed$journal)),
+             paste("Published year:", target_article_parsed$year),
+             paste("Type:", target_article_parsed$entry))
       
       issue_body <- 
         glue(
@@ -329,13 +338,14 @@ if (paper_type %in% c("arxiv", "DOI")) {
       :link: URL: [{url}]({url})
       :date: {month} {year} (Volume{volume}{number})
       ",
-          year = target_article$year,
-          month = month.name[which(grepl(target_article$month, month.abb, ignore.case = TRUE))],
-          volume = ifelse(is.null(target_article$volume), 
+          year = target_article_parsed$year,
+          month = month.name[which(grepl(target_article_parsed$month, month.abb, ignore.case = TRUE))],
+          volume = ifelse(is.null(target_article_parsed$volume), 
                           "",
-                          target_article$volume),
-          number = ifelse(is.null(target_article$number), "", 
-                          paste0(" #", target_article$number)))
+                          target_article_parsed$volume),
+          number = ifelse(is.null(target_article_parsed$number), "", 
+                          paste0(" #", target_article_parsed$number)))
+      
       
     }
     
@@ -378,5 +388,66 @@ if (paper_type %in% c("arxiv", "DOI")) {
            repo = repo,
            number = event_json$issue$number,
            body = issue_body)
+    
+    if (paper_type == "DOI") {
+      qry$query("exist_bibfile",
+                glue('
+query{
+  repository(owner: "<user>",name: "<repo>"){
+    object(expression: "master:<path_references_bib>") {
+      ... on Blob {
+        text
+      }
+    }
+  }
+}',
+                     .open = "<",
+                     .close = ">"))
+      
+      is_bibfile_exist <- 
+        negate(
+          ~ jsonlite::fromJSON(.x) %>% 
+            pluck(!!! queries %>% 
+                    pluck("exist_bibfile")) %>%
+            is.null()
+        )(cli$exec(qry$queries$exist_bibfile))
+      
+      if (rlang::is_true(is_bibfile_exist)) {
+        
+        get_bib <- 
+          gh::gh("GET /repos/:owner/:repo/contents/:path",
+                 owner = user,
+                 repo = repo,
+                 path = path_references_bib)
+        
+        reference_bibtex_base64 <- 
+          paste(get_bib$content %>% 
+                  openssl::base64_decode(text = .) %>% 
+                  rawToChar(), 
+                target_article,
+                sep = "\n") %>% 
+          openssl::base64_encode(bin = .)
+        
+        gh::gh("PUT /repos/:owner/:repo/contents/:path",
+               owner = user,
+               repo = repo,
+               path = path_references_bib,
+               content = reference_bibtex_base64,
+               message = paste("Update", "crossref citations"),
+               sha = get_bib$sha)
+        
+      } else {
+        reference_bibtex_base64 <-
+          openssl::base64_encode(paste0(target_article, "\n"))
+        
+        gh::gh("PUT /repos/:owner/:repo/contents/:path",
+               owner = user,
+               repo = repo,
+               path = path_references_bib,
+               content = reference_bibtex_base64,
+               message = paste("Add", "crossref citations"))
+        
+      }  
+    }
   }
 }
