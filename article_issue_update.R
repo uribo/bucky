@@ -344,7 +344,7 @@ if (paper_type %in% c("arxiv", "DOI")) {
                           "",
                           target_article_parsed$volume),
           number = ifelse(is.null(target_article_parsed$number), "", 
-                          paste0(" #", target_article_parsed$number)))
+                          paste0(" #&#x2060;", target_article_parsed$number)))
       
       
     }
