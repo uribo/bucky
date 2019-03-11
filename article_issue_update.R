@@ -433,9 +433,8 @@ query{
                repo = repo,
                path = path_references_bib,
                content = reference_bibtex_base64,
-               message = paste("Update", 
-                               "crossref citations by",
-                               event_json$issue$number),
+               message = glue("Update crossref citations by #{number}",
+                              number = event_json$issue$number),
                sha = get_bib$sha)
         
       } else {
@@ -447,8 +446,8 @@ query{
                repo = repo,
                path = path_references_bib,
                content = reference_bibtex_base64,
-               message = paste("Add", "crossref citations by",
-                               event_json$issue$number))
+               message = glue("Add crossref citations by #{number}",
+                              number = event_json$issue$number))
         
       }  
     }
