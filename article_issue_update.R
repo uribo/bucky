@@ -14,7 +14,7 @@ cli <- ghql::GraphqlClient$new(
 )
 cli$load_schema()
 event_json <- jsonlite::fromJSON("/github/workflow/event.json")
-user <- event_json$sender$login
+user <- event_json$repository$owner$login
 repo <- event_json$repository$name
 current_labels <- 
   event_json$issue$labels$name
