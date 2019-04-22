@@ -24,8 +24,8 @@ round_journal_name <- function(x) {
   gsub("\\{\\\\", "", x) %>% 
     gsub("}", "", .) %>% 
     gsub("\\{", "", .) %>% 
-    gsub("Journal", "J.", .)
-  
+    gsub("Journal", "J.", .) %>% 
+    stringr::str_replace("Proceedings of the National Academy of Sciences", "PNAS")
 }
 check_duplicate <- function(issue_title, issue_list, event_json, close = FALSE, user = user, repo = repo) {
   
