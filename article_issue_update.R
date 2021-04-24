@@ -2,6 +2,7 @@ library(rlang)
 library(purrr, warn.conflicts = FALSE)
 library(glue)
 library(rAltmetric)
+library(buckyR)
 # library(ghql)
 
 reference_style <- "oikos"
@@ -20,21 +21,12 @@ current_labels <-
   event_json$issue$labels$name
 
 # Functions ---------------------------------------------------------------
-round_journal_name <- function(x) {
-  gsub("\\{\\\\", "", x) %>% 
-    gsub("}", "", .) %>% 
-    gsub("\\{", "", .) %>% 
-    gsub("Journal", "J.", .) %>% 
-    stringr::str_replace("Proceedings of the National Academy of Sciences", "PNAS")
-}
+
 check_duplicate <- function(issue_title, issue_list, event_json, close = FALSE, user = user, repo = repo) {
-  
   duplicate_num <- 
     subset(issue_list, title == issue_title) %>%
     purrr::pluck("number")
-  
   if (rlang::is_false(is.null(duplicate_num)) & rlang::is_true(close)) {
-    
     gh::gh("PATCH /repos/:owner/:repo/issues/:number",
            owner = user,
            repo = repo,
@@ -43,52 +35,8 @@ check_duplicate <- function(issue_title, issue_list, event_json, close = FALSE, 
            labels = list("duplicate"),
            state = "closed")
   } 
-  
   duplicate_num
-  
 }
-identific_altmetrics <- 
-  function(type = NULL, identifer = NULL) {
-    
-    args <- 
-      list(doi = ifelse(type == "DOI", identifer, NA),
-           arxiv = ifelse(type == "arxiv", identifer, NA)) %>% 
-      purrr::keep(~ !is.na(.x))
-    
-    res_altm <-
-      rlang::exec("altmetrics", !!!args)
-    
-    df_res_altm <-
-      rAltmetric::altmetric_data(res_altm)
-    
-    vars_altm <- 
-      names(df_res_altm)[names(df_res_altm) %in% c(
-        "cited_by_posts_count",
-        "cited_by_tweeters_count",
-        "cited_by_accounts_count",
-        "score",
-        "last_updated")]
-    
-    df_res_altm <-
-      df_res_altm[, vars_altm]
-    
-    df_res_altm$last_updated <-
-      as.POSIXct(as.numeric(df_res_altm$last_updated),
-                 origin = "1970-01-01 00:00:00",
-                 tz = "UTC")
-    
-    altmetric_score <-
-      df_res_altm %>%
-      knitr::kable() %>%
-      as.character() %>%
-      paste(collapse = "\n")
-    
-    altmetric_url <-
-      res_altm$details_url
-    
-    list(score = altmetric_score, url = altmetric_url)
-    
-  }
 
 # 1. Create issue template ------------------------------------------------
 path_issue_template <- ".github/ISSUE_TEMPLATE/paper_template.md"
@@ -98,7 +46,7 @@ queries <- list(issue_template = list("data", "repository", "object"),
                 exist_bibfile = list("data", "repository", "object"),
                 collect_article_issue = list("data", "repository", "issues", "edges", "node"))
 qry$query("issue_template",
-          glue('
+          glue::glue('
 query{
   repository(owner: "<user>",name: "<repo>"){
     object(expression: "master:<path_issue_template>") {
@@ -160,16 +108,12 @@ assignees: ''
 issue_title <- event_json$issue$title
 
 paper_type <-
-  ifelse(grepl("arxiv", issue_title, ignore.case = TRUE),
-         "arxiv",
-         ifelse(grepl("doi", issue_title, ignore.case = TRUE),
-                "DOI",
-                rlang::warn("Can't detect DOI or arXiv identifer")))
+  buckyR:::detect_paper_type(issue_title)
 
 if (paper_type %in% c("arxiv", "DOI")) {
   
   qry$query("issue_count",
-            glue(
+            glue::glue(
               'query {
   repository(owner: "<user>", name: "<repo>") {
     issues {
@@ -188,7 +132,7 @@ if (paper_type %in% c("arxiv", "DOI")) {
             purrr::pluck("issue_count"))
   
   qry$query("collect_article_issue",
-            glue(
+            glue::glue(
               'query {
   repository(owner: "<user>", name: "<repo>") {
     issues (labels: "papers", first: <issue_count>) {
@@ -223,18 +167,18 @@ if (paper_type %in% c("arxiv", "DOI")) {
   #       purrr::map_chr(c("title")), stringsAsFactors = FALSE)
   
   paper_identifer <-
-    gsub("[[:space:]]", "", gsub(".+:", "", issue_title))
+    buckyR:::extract_identifer(issue_title)
   
   if (paper_type == "arxiv") {
     paper_identifer <- gsub("v.+", "", paper_identifer)
   } 
   
   altm_status <- 
-    httr::status_code(httr::GET(glue("http://api.altmetric.com/v1/{paper_type}/{paper_identifer}")))
+    httr::status_code(httr::GET(glue::glue("http://api.altmetric.com/v1/{paper_type}/{paper_identifer}")))
   
   if (paper_type == "arxiv") {
     
-    if (rlang::is_true(httr:::http_error(glue("https://arxiv.org/abs/{paper_identifer}")))) {
+    if (rlang::is_true(httr:::http_error(glue::glue("https://arxiv.org/abs/{paper_identifer}")))) {
       
       gh::gh("POST /repos/:owner/:repo/issues/:number/comments",
              owner = user,
@@ -286,10 +230,10 @@ if (paper_type %in% c("arxiv", "DOI")) {
         rcrossref:::parse_bibtex(target_article)
       
       authors <- ifelse(is.null(target_article_parsed$author), "", target_article_parsed$author)
-      title <- round_journal_name(target_article_parsed$title)
+      title <- buckyR::abbr_journal_name(target_article_parsed$title)
       url <- target_article_parsed$url
       
-      issue_title <- glue("{key}: {title}",
+      issue_title <- glue::glue("{key}: {title}",
                           key = target_article_parsed$key)
       
       duplicate_num <- 
@@ -310,7 +254,7 @@ if (paper_type %in% c("arxiv", "DOI")) {
         rAltmetric::altmetrics(arxiv = paper_identifer)
       
       issue_body <- 
-        glue(
+        glue::glue(
           "## Information\n
 :page_with_curl: Title: **{title}**
 :busts_in_silhouette: Authors: {authors}
@@ -326,26 +270,12 @@ if (paper_type %in% c("arxiv", "DOI")) {
     } else if (paper_type == "DOI") {
       
       issue_labels <-
-        list(paste("Journal:", round_journal_name(target_article_parsed$journal)),
+        list(paste("Journal:", abbr_journal_name(target_article_parsed$journal)),
              paste("Published year:", target_article_parsed$year),
              paste("Type:", target_article_parsed$entry))
       
       issue_body <- 
-        glue(
-          "## Information\n
-      :page_with_curl: Title: **{title}**
-      :busts_in_silhouette: Authors: {authors}
-      :link: URL: [{url}]({url})
-      :date: {month} {year} (Volume{volume}{number})
-      ",
-          year = target_article_parsed$year,
-          month = month.name[which(grepl(target_article_parsed$month, month.abb, ignore.case = TRUE))],
-          volume = ifelse(is.null(target_article_parsed$volume), 
-                          "",
-                          target_article_parsed$volume),
-          number = ifelse(is.null(target_article_parsed$number), "", 
-                          paste0(" #&#x2060;", target_article_parsed$number)))
-      
+        buckyR:::make_issue_info(target_article_parsed)
       
     }
     
@@ -364,23 +294,8 @@ if (paper_type %in% c("arxiv", "DOI")) {
            labels = issue_labels)
     
     if (identical(altm_status, 200L)) {
-      
-      res_altm <- 
-        identific_altmetrics(type = paper_type, identifer = paper_identifer)
-      
       issue_body <- 
-        glue(
-          issue_body,
-          "\n\n",
-          glue(
-            '### Article metrics\n
-    {score}\n
-    {url}',
-            score = res_altm$score,
-            url = res_altm$url),
-          .open = "AAA",
-          .close = "ZZZ")
-      
+        buckyR:::make_issue_metrics(issue_body, paper_type, paper_identifer)
     }
     
     gh::gh("POST /repos/:owner/:repo/issues/:number/comments",
@@ -391,7 +306,7 @@ if (paper_type %in% c("arxiv", "DOI")) {
     
     if (paper_type == "DOI") {
       qry$query("exist_bibfile",
-                glue('
+                glue::glue('
 query{
   repository(owner: "<user>",name: "<repo>"){
     object(expression: "master:<path_references_bib>") {
@@ -405,7 +320,7 @@ query{
                      .close = ">"))
       
       is_bibfile_exist <- 
-        negate(
+        purrr::negate(
           ~ jsonlite::fromJSON(.x) %>% 
             pluck(!!! queries %>% 
                     pluck("exist_bibfile")) %>%
@@ -433,7 +348,7 @@ query{
                repo = repo,
                path = path_references_bib,
                content = reference_bibtex_base64,
-               message = glue("Update crossref citations by #{number}",
+               message = glue::glue("Update crossref citations by #{number}",
                               number = event_json$issue$number),
                sha = get_bib$sha)
         
@@ -446,7 +361,7 @@ query{
                repo = repo,
                path = path_references_bib,
                content = reference_bibtex_base64,
-               message = glue("Add crossref citations by #{number}",
+               message = glue::glue("Add crossref citations by #{number}",
                               number = event_json$issue$number))
         
       }  
