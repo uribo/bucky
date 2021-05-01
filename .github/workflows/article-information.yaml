@@ -1,0 +1,42 @@
+name: Article Information
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  buckyR:
+    runs-on: macOS-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_EVENT_PATH: $GITHUB_EVENT_PATH
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: r-lib/actions/setup-r@v1
+      
+      - uses: actions/cache@v2
+        if: contains(toJSON(github.event.issue.labels.*.name), 'papers')
+        with:
+          path: ~/Library/Application Support/renv
+          key: ${{ runner.os }}-renv-${{ hashFiles('**/renv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-renv-
+    
+      - name: Install Package Dependencies
+        if: contains(toJSON(github.event.issue.labels.*.name), 'papers')
+        run: |-
+          install.packages("renv")
+          renv::restore(confirm = FALSE)
+        shell: Rscript {0}
+
+      - name: Article information
+        if: contains(toJSON(github.event.issue.labels.*.name), 'papers')
+        run: |
+          event_json <- jsonlite::fromJSON(Sys.getenv("GITHUB_EVENT_PATH"))
+          user <- event_json$repository$owner$login
+          repo <- stringr::str_remove(event_json$repository$full_name, ".+\\/")
+          x <- event_json$issue$title
+          number <- event_json$issue$number
+          labels <- event_json$issue$labels$name
+          buckyR::article_info(x, user, repo, number, labels)
+        shell: Rscript {0}
