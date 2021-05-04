@@ -78,11 +78,11 @@
       "Source": "GitHub",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
-      "RemoteRepo": "buckyR",
       "RemoteUsername": "uribo",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "65fa384f227fc6982c3d17f33a831a754c56a3d9",
-      "Hash": "a23664facede2b76f10e32e15be560d6"
+      "RemoteRepo": "buckyR",
+      "RemoteRef": "main",
+      "RemoteSha": "720199305c40c1be2d3fa7a3bc053a1c6483c3ff",
+      "Hash": "fbe82ac00841d58badf64f4c8373e981"
     },
     "cachem": {
       "Package": "cachem",
