@@ -16,7 +16,7 @@ BUCKY: Helpers for literature management as GitHub actions
 
 ### Using your project
 
-Copy `.github/workflows/article-information.yaml`
+Copy [`.github/workflows/article-information.yaml`](https://github.com/uribo/bucky/blob/master/.github/workflows/article-information.yaml) and [`renv.lock`](https://github.com/uribo/bucky/blob/master/renv.lock) to your repository.
 
 ## License
 
